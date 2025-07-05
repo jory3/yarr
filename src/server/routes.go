@@ -35,6 +35,7 @@ func (s *Server) handler() http.Handler {
 			Username: s.Username,
 			Password: s.Password,
 			Public:   []string{"/static", "/fever"},
+			DB:       s.db,
 		}
 		r.Use(a.Handler)
 	}
@@ -86,7 +87,7 @@ func (s *Server) handleManifest(c *router.Context) {
 		"short_name":  "yarr",
 		"description": "yet another rss reader",
 		"display":     "standalone",
-		"start_url":   s.BasePath,
+		"start_url":   "/" + strings.TrimPrefix(s.BasePath, "/"),
 		"icons": []map[string]interface{}{
 			{
 				"src":   s.BasePath + "/static/graphicarts/favicon.png",
@@ -293,6 +294,11 @@ func (s *Server) handleFeed(c *router.Context) {
 				s.db.UpdateFeedFolder(id, &folderId)
 			}
 		}
+		if link, ok := body["feed_link"]; ok {
+			if reflect.TypeOf(link).Kind() == reflect.String {
+				s.db.UpdateFeedLink(id, link.(string))
+			}
+		}
 		c.Out.WriteHeader(http.StatusOK)
 	} else if c.Req.Method == "DELETE" {
 		s.db.DeleteFeed(id)
@@ -323,6 +329,9 @@ func (s *Server) handleItem(c *router.Context) {
 		}
 
 		item.Content = sanitizer.Sanitize(item.Link, item.Content)
+		for i, link := range item.MediaLinks {
+			item.MediaLinks[i].Description = sanitizer.Sanitize(item.Link, link.Description)
+		}
 
 		c.JSON(http.StatusOK, item)
 	} else if c.Req.Method == "PUT" {
@@ -365,11 +374,18 @@ func (s *Server) handleItemList(c *router.Context) {
 		}
 		newestFirst := query.Get("oldest_first") != "true"
 
-		items := s.db.ListItems(filter, perPage+1, newestFirst, false)
+		items := s.db.ListItems(filter, perPage+1, newestFirst, true)
 		hasMore := false
 		if len(items) == perPage+1 {
 			hasMore = true
 			items = items[:perPage]
+		}
+
+		for i, item := range items {
+			if item.Title == "" {
+				text := htmlutil.ExtractText(item.Content)
+				items[i].Title = htmlutil.TruncateText(text, 140)
+			}
 		}
 		c.JSON(http.StatusOK, map[string]interface{}{
 			"list":     items,

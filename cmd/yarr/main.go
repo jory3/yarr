@@ -13,6 +13,7 @@ import (
 	"github.com/nkanaev/yarr/src/platform"
 	"github.com/nkanaev/yarr/src/server"
 	"github.com/nkanaev/yarr/src/storage"
+	"github.com/nkanaev/yarr/src/worker"
 )
 
 var Version string = "0.0"
@@ -89,12 +90,16 @@ func main() {
 		log.SetOutput(os.Stdout)
 	}
 
-	configPath, err := os.UserConfigDir()
-	if err != nil {
-		log.Fatal("Failed to get config dir: ", err)
+	if open && strings.HasPrefix(addr, "unix:") {
+		log.Fatal("Cannot open ", addr, " in browser")
 	}
 
 	if db == "" {
+		configPath, err := os.UserConfigDir()
+		if err != nil {
+			log.Fatal("Failed to get config dir: ", err)
+		}
+
 		storagePath := filepath.Join(configPath, "yarr")
 		if err := os.MkdirAll(storagePath, 0755); err != nil {
 			log.Fatal("Failed to create app config dir: ", err)
@@ -105,6 +110,7 @@ func main() {
 	log.Printf("using db file %s", db)
 
 	var username, password string
+	var err error
 	if authfile != "" {
 		f, err := os.Open(authfile)
 		if err != nil {
@@ -131,6 +137,7 @@ func main() {
 		log.Fatal("Failed to initialise database: ", err)
 	}
 
+	worker.SetVersion(Version)
 	srv := server.NewServer(store, addr)
 
 	if basepath != "" {
